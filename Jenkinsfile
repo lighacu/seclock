@@ -38,17 +38,20 @@ stages {
     }
 
     stage('SonarQube Analysis') {
-        steps {
-            withSonarQubeEnv('SonarQube') {
+    steps {
+        withSonarQubeEnv('SonarQube') {
+            withCredentials([string(credentialsId: 'sonarqube', variable: 'SONAR_TOKEN')]) {
                 sh '''
                     sonar-scanner \
                       -Dsonar.projectKey=seclock \
                       -Dsonar.projectName=Seclock \
-                      -Dsonar.sources=.
+                      -Dsonar.sources=. \
+                      -Dsonar.token=$SONAR_TOKEN
                 '''
             }
         }
     }
+}
 
     stage('Build Docker Image') {
         steps {
