@@ -9,12 +9,13 @@ environment {
 
 stages {
 
-    stage('Checkout') {
-        steps {
-            git branch: 'main',
-                url: 'https://github.com/sumith-k-sam/seclock.git'
-        }
+  stage('Checkout') {
+    steps {
+        git credentialsId: 'github-https',
+            url: 'https://github.com/lighacu/seclock.git',
+            branch: 'main'
     }
+}
 
     stage('Install Dependencies') {
         steps {
