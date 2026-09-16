@@ -63,7 +63,7 @@ pipeline {
 
         stage('Login to Amazon ECR') {
             steps {
-                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-cred']]) {
+                withAWS(credentials: 'aws-cred-new', region: "${AWS_REGION}") {
                     sh '''
                         AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 
@@ -75,7 +75,7 @@ pipeline {
 
         stage('Push Docker Image to ECR') {
             steps {
-                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-cred']]) {
+                withAWS(credentials: 'aws-cred-new', region: "${AWS_REGION}") {
                     sh '''
                         AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 
@@ -91,7 +91,7 @@ pipeline {
 
         stage('Deploy to EKS') {
             steps {
-                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-cred']]) {
+                withAWS(credentials: 'aws-cred-new', region: "${AWS_REGION}") {
                     sh '''
                         aws eks update-kubeconfig --region ${AWS_REGION} --name ${EKS_CLUSTER}
 
