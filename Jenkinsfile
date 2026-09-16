@@ -1,7 +1,6 @@
 pipeline {
 agent any
 
-```
 environment {
     AWS_REGION = 'ap-south-1'
     ECR_REPOSITORY = 'seclock'
@@ -126,6 +125,5 @@ post {
         echo 'Seclock CI/CD pipeline failed.'
     }
 }
-```
 
 }
