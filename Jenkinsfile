@@ -11,8 +11,9 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                git branch: 'main',
-                    url: 'https://github.com/sumith-k-sam/seclock.git'
+                git credentialsId: 'github-https',
+                    url: 'https://github.com/lighacu/seclock.git',
+                    branch: 'main'
             }
         }
 
@@ -39,12 +40,20 @@ pipeline {
         stage('SonarQube Analysis') {
             steps {
                 withSonarQubeEnv('SonarQube') {
-                    sh '''
-                        sonar-scanner \
-                          -Dsonar.projectKey=seclock \
-                          -Dsonar.projectName=Seclock \
-                          -Dsonar.sources=.
-                    '''
+                    withCredentials([
+                        string(
+                            credentialsId: 'sonarqube',
+                            variable: 'SONAR_TOKEN'
+                        )
+                    ]) {
+                        sh '''
+                            sonar-scanner \
+                            -Dsonar.projectKey=seclock \
+                            -Dsonar.projectName=Seclock \
+                            -Dsonar.sources=. \
+                            -Dsonar.token=$SONAR_TOKEN
+                        '''
+                    }
                 }
             }
         }
@@ -52,65 +61,95 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 sh '''
-                    docker build -t ${ECR_REPOSITORY}:${BUILD_NUMBER} .
+                    docker build \
+                        -t ${ECR_REPOSITORY}:${BUILD_NUMBER} .
                 '''
             }
         }
 
         stage('Login to Amazon ECR') {
             steps {
-                sh '''
-                    AWS_ACCOUNT_ID=$(aws sts get-caller-identity \
-                        --query Account \
-                        --output text)
+                withAWS(
+                    credentials: 'aws-cred-new',
+                    region: "${AWS_REGION}"
+                ) {
+                    sh '''
+                        AWS_ACCOUNT_ID=$(aws sts get-caller-identity \
+                            --query Account \
+                            --output text)
 
-                    aws ecr get-login-password \
-                        --region ${AWS_REGION} | \
-                    docker login \
-                        --username AWS \
-                        --password-stdin \
-                        ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
-                '''
+                        aws ecr get-login-password \
+                            --region ${AWS_REGION} | \
+                        docker login \
+                            --username AWS \
+                            --password-stdin \
+                            ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+                    '''
+                }
             }
         }
 
         stage('Push Docker Image to ECR') {
             steps {
-                sh '''
-                    AWS_ACCOUNT_ID=$(aws sts get-caller-identity \
-                        --query Account \
-                        --output text)
+                withAWS(
+                    credentials: 'aws-cred-new',
+                    region: "${AWS_REGION}"
+                ) {
+                    sh '''
+                        AWS_ACCOUNT_ID=$(aws sts get-caller-identity \
+                            --query Account \
+                            --output text)
 
-                    ECR_IMAGE=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:${BUILD_NUMBER}
+                        ECR_IMAGE=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:${BUILD_NUMBER}
 
-                    docker tag \
-                        ${ECR_REPOSITORY}:${BUILD_NUMBER} \
-                        ${ECR_IMAGE}
+                        docker tag \
+                            ${ECR_REPOSITORY}:${BUILD_NUMBER} \
+                            ${ECR_IMAGE}
 
-                    docker push ${ECR_IMAGE}
-                '''
+                        docker push ${ECR_IMAGE}
+                    '''
+                }
             }
         }
 
-        stage('Deploy to EKS') {
+        stage('Update Kubernetes Manifest') {
             steps {
-                sh '''
-                    aws eks update-kubeconfig \
-                        --region ${AWS_REGION} \
-                        --name ${EKS_CLUSTER}
+                withAWS(
+                    credentials: 'aws-cred-new',
+                    region: "${AWS_REGION}"
+                ) {
+                    sh '''
+                        AWS_ACCOUNT_ID=$(aws sts get-caller-identity \
+                            --query Account \
+                            --output text)
 
-                    kubectl apply -f k8s/deployment.yaml
-                    kubectl apply -f k8s/service.yaml
-                '''
+                        ECR_IMAGE=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:${BUILD_NUMBER}
+
+                        echo "Updating deployment.yaml to:"
+                        echo "${ECR_IMAGE}"
+
+                        sed -i "s|image: .*|image: ${ECR_IMAGE}|" k8s/deployment.yaml
+
+                        git config user.name "Jenkins"
+                        git config user.email "jenkins@localhost"
+
+                        git add k8s/deployment.yaml
+
+                        git commit \
+                            -m "Deploy seclock ${BUILD_NUMBER}" \
+                            || echo "No changes to commit"
+
+                        git push origin main
+                    '''
+                }
             }
         }
 
-        stage('Verify Deployment') {
+        stage('Verify GitOps Configuration') {
             steps {
                 sh '''
-                    kubectl get pods -A
-                    kubectl get services -A
-                    kubectl get deployments -A
+                    echo "Image configured for deployment:"
+                    grep "image:" k8s/deployment.yaml
                 '''
             }
         }
@@ -118,13 +157,11 @@ pipeline {
 
     post {
         success {
-            echo 'Seclock CI/CD pipeline completed successfully!'
+            echo 'Seclock CI pipeline completed successfully!'
         }
 
         failure {
-            echo 'Seclock CI/CD pipeline failed.'
+            echo 'Seclock CI pipeline failed.'
         }
     }
 }
-```
-
