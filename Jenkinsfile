@@ -106,11 +106,13 @@ pipeline {
 
         stage('Verify Deployment') {
             steps {
-                sh '''
-                    kubectl get pods -A
-                    kubectl get services -A
-                    kubectl get deployments -A
-                '''
+                withAWS(credentials: 'aws-cred-new', region: "${AWS_REGION}") {
+                    sh '''
+                        kubectl get pods -n seclock
+                        kubectl get services -n seclock
+                        kubectl get deployments -n seclock
+                    '''
+                }
             }
         }
     }
