@@ -95,6 +95,8 @@ pipeline {
                     sh '''
                         aws eks update-kubeconfig --region ${AWS_REGION} --name ${EKS_CLUSTER}
 
+                        kubectl create namespace seclock --dry-run=client -o yaml | kubectl apply -f -
+
                         kubectl apply -f k8s/deployment.yaml
                         kubectl apply -f k8s/service.yaml
                     '''
